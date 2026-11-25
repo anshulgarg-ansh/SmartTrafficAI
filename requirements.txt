@@ -1,0 +1,8 @@
+Flask
+gunicorn
+Werkzeug
+ultralytics
+opencv-python-headless
+easyocr
+Pillow
+numpy
