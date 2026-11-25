@@ -1,0 +1,476 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Vision Engine | SmartTraffic AI</title>
+
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#0b1120;color:#e5e7eb;font-family:Arial,sans-serif;display:flex;min-height:100vh}
+aside{width:245px;flex-shrink:0;background:#111827;padding:28px 20px;border-right:1px solid #29364b}
+.logo{color:#38bdf8;font-size:22px;font-weight:bold;margin-bottom:45px}
+nav a{display:block;color:#9ca3af;text-decoration:none;padding:14px;margin-bottom:10px;border-radius:9px}
+nav a:hover,nav a.active{background:#1e3a5f;color:#38bdf8}
+main{flex:1;padding:35px;min-width:0}
+.subtitle{color:#94a3b8;margin-top:9px}
+.panel{background:#151f32;border:1px solid #29364b;border-radius:13px;padding:26px;margin-top:28px;min-width:0}
+.panel h2{font-size:19px;margin-top:0}
+.section-heading{margin-top:32px!important}
+.upload{border:2px dashed #334155;border-radius:12px;padding:35px 20px;text-align:center}
+.upload p,.muted{color:#94a3b8}
+input[type=file]{display:block;width:100%;max-width:400px;margin:22px auto;color:#cbd5e1}
+button{background:#0284c7;color:white;padding:14px 25px;border:0;border-radius:8px;font-weight:bold;cursor:pointer}
+button:hover{background:#0369a1}
+.error{color:#fda4af;background:#451a24;padding:14px;border-radius:8px;margin-top:20px}
+.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:15px;margin-top:22px}
+.stat{background:#0b1120;border:1px solid #29364b;border-radius:10px;padding:20px;min-width:0;overflow-wrap:anywhere}
+.stat p{color:#94a3b8;margin-top:0}
+.stat h2{color:#38bdf8;font-size:27px;margin:0 0 5px}
+.helmet-card h2,.good{color:#34d399}
+.no-helmet-card h2,.danger{color:#fb7185}
+.anpr-card h2{color:#fbbf24}
+.evidence{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:15px;margin-top:20px}
+.evidence-card{background:#0b1120;border:1px solid #29364b;border-radius:10px;padding:12px;min-width:0}
+.evidence img{width:100%;max-height:260px;object-fit:contain;background:#111827;border:1px solid #334155;border-radius:8px;display:block}
+.evidence-card p{color:#94a3b8;font-size:14px;line-height:1.5;margin:10px 0 0;overflow-wrap:anywhere}
+.info{color:#94a3b8;font-size:13px;line-height:1.6;margin-top:20px}
+.table-wrap{width:100%;overflow-x:auto;margin-top:14px}
+table{width:100%;border-collapse:collapse;min-width:760px}
+th,td{text-align:left;padding:15px 12px;border-bottom:1px solid #29364b;white-space:nowrap}
+th{color:#94a3b8;font-size:14px}
+td strong{color:#f8fafc}
+.confidence{color:#34d399;font-weight:bold}
+.pill{display:inline-block;border-radius:20px;padding:6px 11px;background:#422006;color:#fbbf24;font-size:12px}
+.event-card{background:#0b1120;border:1px solid #29364b;border-radius:10px;padding:20px;margin-top:15px}
+.event-card h3{margin-top:0}
+.candidate-list{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.candidate{background:#172338;border:1px solid #334155;border-radius:8px;padding:9px 12px;font-size:13px;color:#cbd5e1}
+
+@media(max-width:1000px){
+.stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+.evidence{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:800px){
+body{display:block}
+aside{width:100%;padding:20px}
+main{padding:20px}
+}
+@media(max-width:520px){
+.stats,.evidence{grid-template-columns:1fr}
+.panel{padding:18px}
+}
+</style>
+</head>
+
+<body>
+
+<aside>
+  <div class="logo">🚦 SmartTraffic AI</div>
+  <nav>
+    <a href="/">▦ Dashboard</a>
+    <a href="/violations">⚠ Violations</a>
+    <a href="/challans">▤ E-Challans</a>
+    <a href="/ai-detection" class="active">🤖 AI Detection</a>
+  </nav>
+</aside>
+
+<main>
+
+<h1>AI Vision Engine</h1>
+
+<p class="subtitle">
+Intelligent traffic, helmet and number plate analysis using YOLO and OCR
+</p>
+
+<section class="panel">
+
+<h2>Upload Traffic Video</h2>
+
+<form method="POST" enctype="multipart/form-data">
+
+<div class="upload">
+
+<h3>📹 Traffic Video Analysis</h3>
+
+<p>Upload an MP4, AVI, MOV or MKV video (maximum 100 MB)</p>
+
+<input
+type="file"
+name="video"
+accept=".mp4,.avi,.mov,.mkv"
+required
+>
+
+<button type="submit">Start AI Detection</button>
+
+</div>
+</form>
+
+{% if error %}
+<div class="error">{{ error }}</div>
+{% endif %}
+
+</section>
+
+{% if result %}
+
+<section class="panel">
+
+<h2>Detection Results</h2>
+
+<div class="stats">
+
+<div class="stat">
+<p>Total Vehicle Detections</p>
+<h2>{{ result.total_detections }}</h2>
+</div>
+
+<div class="stat">
+<p>Frames Processed</p>
+<h2>{{ result.frames_processed }}</h2>
+</div>
+
+<div class="stat">
+<p>Motorcycles</p>
+<h2>{{ result.counts.get('Motorcycle', 0) }}</h2>
+</div>
+
+</div>
+
+<h2 class="section-heading">Vehicle Detection Statistics</h2>
+
+<div class="stats">
+
+{% for name,count in result.counts.items() %}
+
+<div class="stat">
+<p>{{ name }}</p>
+<h2>{{ count }}</h2>
+</div>
+
+{% endfor %}
+
+</div>
+
+<h2 class="section-heading">🪖 Helmet Detection Results</h2>
+
+<div class="stats">
+
+<div class="stat helmet-card">
+<p class="good">With Helmet</p>
+<h2>{{ result.helmet_counts.get('With Helmet', 0) }}</h2>
+</div>
+
+<div class="stat no-helmet-card">
+<p class="danger">Without Helmet</p>
+<h2>{{ result.helmet_counts.get('Without Helmet', 0) }}</h2>
+</div>
+
+<div class="stat no-helmet-card">
+<p>No Helmet Evidence Images</p>
+<h2>{{ result.no_helmet_evidence|length }}</h2>
+</div>
+
+</div>
+
+<div class="stat" style="margin-top:20px">
+
+<p>Total Helmet Detections</p>
+
+<h2>{{ result.total_helmet_detections }}</h2>
+
+<p class="info">
+Counts represent helmet-class detections across sampled frames,
+not unique riders.
+</p>
+
+</div>
+
+<h2 class="section-heading">🔢 Number Plate Detection (ANPR)</h2>
+
+<div class="stats">
+
+<div class="stat anpr-card">
+<p>Total Number Plate Detections</p>
+<h2>{{ result.plate_detections }}</h2>
+</div>
+
+<div class="stat anpr-card">
+<p>Recognized Registration Numbers</p>
+<h2>{{ result.recognized_plates|length }}</h2>
+</div>
+
+<div class="stat anpr-card">
+<p>Plate Evidence Images</p>
+<h2>{{ result.plate_evidence|length }}</h2>
+</div>
+
+</div>
+
+<h2 class="section-heading">🪪 Recognized Vehicle Registration Numbers</h2>
+
+{% if result.recognized_plates %}
+
+<div class="table-wrap">
+
+<table>
+
+<thead>
+<tr>
+<th>Sr. No.</th>
+<th>Registration Number</th>
+<th>OCR Votes</th>
+<th>Plate Confidence</th>
+<th>OCR Confidence</th>
+<th>Combined Score</th>
+<th>OCR Variants Merged</th>
+<th>Frames Seen</th>
+<th>Last Frame</th>
+</tr>
+</thead>
+
+<tbody>
+
+{% for plate in result.recognized_plates %}
+
+<tr>
+
+<td>{{ loop.index }}</td>
+
+<td><strong>{{ plate.vehicle_number }}</strong></td>
+
+<td>{{ plate.vote_count }}</td>
+
+<td class="confidence">
+{{ '%.1f'|format(plate.plate_confidence * 100) }}%
+</td>
+
+<td class="confidence">
+{{ '%.1f'|format(plate.ocr_confidence * 100) }}%
+</td>
+
+<td class="confidence">
+{{ '%.1f'|format(plate.combined_confidence * 100) }}%
+</td>
+
+<td>
+{{ plate.ocr_variants|join(', ') if plate.ocr_variants else '—' }}
+</td>
+
+<td>{{ plate.frames_seen|join(', ') }}</td>
+
+<td>{{ plate.frame_number }}</td>
+
+</tr>
+
+{% endfor %}
+
+</tbody>
+</table>
+
+</div>
+
+<p class="info">
+OCR votes combine repeated readings and cautiously matched
+one-edit, lower-confidence variants near a stronger repeated reading.
+Review merged variants manually. Combined score is a ranking aid,
+not a probability of legal correctness.
+</p>
+
+{% else %}
+
+<p class="muted">
+No valid Indian registration numbers were recognized in this video.
+</p>
+
+{% endif %}
+
+<h2 class="section-heading">📸 Number Plate Evidence Images</h2>
+
+<div class="evidence">
+
+{% for plate in result.plate_evidence %}
+
+<div class="evidence-card">
+
+<img
+src="{{ url_for('static', filename=plate.image) }}"
+alt="Number plate evidence"
+loading="lazy"
+>
+
+<p>
+<strong>Registration:</strong> {{ plate.vehicle_number }}
+</p>
+
+<p>
+<strong>Detection Confidence:</strong>
+{{ '%.1f'|format(plate.plate_confidence * 100) }}%
+</p>
+
+<p>
+<strong>OCR Confidence:</strong>
+{{ '%.1f'|format(plate.ocr_confidence * 100) }}%
+</p>
+
+</div>
+
+{% else %}
+
+<p class="muted">
+No verified-format number plate evidence images generated.
+</p>
+
+{% endfor %}
+
+</div>
+
+<h2 class="section-heading">🚨 No Helmet Violation Evidence</h2>
+
+<div class="evidence">
+
+{% for image in result.no_helmet_evidence %}
+
+<div class="evidence-card">
+
+<img
+src="{{ url_for('static', filename=image) }}"
+alt="No helmet evidence"
+loading="lazy"
+>
+
+</div>
+
+{% else %}
+
+<p class="muted">No no-helmet evidence detected.</p>
+
+{% endfor %}
+
+</div>
+
+<h2 class="section-heading">🔎 No Helmet Event Review</h2>
+
+<p class="muted">
+Review same-frame plate candidates alongside each no-helmet prediction.
+These are candidate associations, not verified vehicle-to-rider matches.
+</p>
+
+{% for event in result.no_helmet_events %}
+
+<div class="event-card">
+
+<h3>Event #{{ loop.index }}</h3>
+
+<p>
+<strong>Frame Number:</strong> {{ event.frame_number }}
+</p>
+
+<p>
+<strong>Helmet Detection Confidence:</strong>
+
+<span class="good">
+{{ '%.1f'|format(event.helmet_confidence * 100) }}%
+</span>
+</p>
+
+<p>
+<strong>Review Status:</strong>
+<span class="pill">{{ event.review_status }}</span>
+</p>
+
+<p><strong>Related Evidence</strong></p>
+
+<div class="evidence" style="grid-template-columns:minmax(0,440px)">
+
+<div class="evidence-card">
+
+<img
+src="{{ url_for('static', filename=event.evidence_path) }}"
+alt="No helmet event frame"
+loading="lazy"
+>
+
+</div>
+</div>
+
+<p><strong>Same-Frame Number Plate Candidates</strong></p>
+
+{% if event.plate_candidates %}
+
+<div class="candidate-list">
+
+{% for candidate in event.plate_candidates %}
+
+<div class="candidate">
+
+<strong>{{ candidate.vehicle_number }}</strong><br>
+
+Plate:
+{{ '%.1f'|format(candidate.plate_confidence * 100) }}%
+
+· OCR:
+{{ '%.1f'|format(candidate.ocr_confidence * 100) }}%
+
+</div>
+
+{% endfor %}
+
+</div>
+
+{% else %}
+
+<p class="muted">
+No number plate candidates found in this frame.
+</p>
+
+{% endif %}
+
+</div>
+
+{% else %}
+
+<p class="muted">No no-helmet events available for review.</p>
+
+{% endfor %}
+
+<h2 class="section-heading">📸 General Detection Evidence</h2>
+
+<div class="evidence">
+
+{% for image in result.evidence_images %}
+
+<div class="evidence-card">
+
+<img
+src="{{ url_for('static', filename=image) }}"
+alt="AI detection evidence"
+loading="lazy"
+>
+
+</div>
+
+{% else %}
+
+<p class="muted">No general evidence frames generated.</p>
+
+{% endfor %}
+
+</div>
+
+<p class="info">
+Important: Vehicle and helmet counts are detections across sampled
+frames, not unique vehicles or riders. OCR may contain recognition
+errors. Registration numbers and no-helmet events must be manually
+verified before issuing an official challan.
+</p>
+
+</section>
+
+{% endif %}
+
+</main>
+</body>
+</html>

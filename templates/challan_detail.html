@@ -1,0 +1,190 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Challan Details | SmartTraffic AI</title>
+
+<style>
+* { box-sizing: border-box; }
+
+body {
+    background: #0b1120;
+    color: #e5e7eb;
+    font-family: Arial, sans-serif;
+    padding: 30px;
+}
+
+.container {
+    max-width: 850px;
+    margin: 30px auto;
+    background: #151f32;
+    border: 1px solid #334155;
+    border-radius: 15px;
+    padding: 35px;
+}
+
+.header {
+    display: flex;
+    justify-content: space-between;
+    border-bottom: 1px solid #334155;
+    padding-bottom: 22px;
+    margin-bottom: 25px;
+}
+
+.logo { color: #38bdf8; font-size: 24px; font-weight: bold; }
+
+.badge {
+    background: #78350f;
+    color: #fbbf24;
+    padding: 8px 15px;
+    border-radius: 20px;
+}
+
+h2 { margin-bottom: 20px; }
+
+.details {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 22px;
+}
+
+.item {
+    background: #0b1120;
+    padding: 17px;
+    border-radius: 9px;
+}
+
+.item p { color: #94a3b8; font-size: 13px; }
+.item h3 { margin-top: 9px; font-size: 17px; }
+
+.penalty {
+    background: #123b35;
+    padding: 20px;
+    margin-top: 25px;
+    border-radius: 10px;
+    color: #34d399;
+}
+
+.buttons {
+    display: flex;
+    gap: 15px;
+    margin-top: 25px;
+}
+
+button {
+    padding: 13px 22px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    background: #0284c7;
+    color: white;
+    font-weight: bold;
+}
+
+a { color: #38bdf8; text-decoration: none; }
+
+@media print {
+    body { background: white; color: black; padding: 0; }
+    .container { background: white; color: black; border: none; }
+    .item { background: #f1f5f9; }
+    .item p { color: #475569; }
+    .penalty { background: #ecfdf5; }
+    .buttons { display: none; }
+    .badge { background: #fef3c7; }
+}
+
+@media(max-width: 600px) {
+    .details { grid-template-columns: 1fr; }
+    .header { flex-direction: column; gap: 15px; }
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+    <div class="header">
+        <div>
+            <div class="logo">🚦 SmartTraffic AI</div>
+            <p>Electronic Traffic Violation Record</p>
+        </div>
+        <span class="badge">{{ challan.status }}</span>
+    </div>
+
+    <h2>Challan Details</h2>
+
+    <div class="details">
+
+        <div class="item">
+            <p>Challan ID</p>
+            <h3>CH-{{ challan.id }}</h3>
+        </div>
+
+        <div class="item">
+            <p>Vehicle Registration</p>
+            <h3>{{ challan.vehicle_number }}</h3>
+        </div>
+
+        <div class="item">
+            <p>Owner Name</p>
+            <h3>{{ challan.owner_name or 'Unknown' }}</h3>
+        </div>
+
+        <div class="item">
+            <p>Contact Number</p>
+            <h3>{{ challan.phone or 'Unavailable' }}</h3>
+        </div>
+
+        <div class="item">
+            <p>Vehicle Type</p>
+            <h3>{{ challan.vehicle_type or 'Unknown' }}</h3>
+        </div>
+
+        <div class="item">
+            <p>Insurance Status</p>
+            <h3>{{ challan.insurance_status or 'Unknown' }}</h3>
+        </div>
+
+        <div class="item">
+            <p>Violation Type</p>
+            <h3>{{ challan.violation_type }}</h3>
+        </div>
+
+        <div class="item">
+            <p>Violation Location</p>
+            <h3>{{ challan.location }}</h3>
+        </div>
+
+        <div class="item">
+            <p>Date & Time</p>
+            <h3>{{ challan.violation_time }}</h3>
+        </div>
+
+        <div class="item">
+            <p>Evidence Reference</p>
+            <h3>{{ challan.evidence_path or 'Not attached' }}</h3>
+        </div>
+
+    </div>
+
+    <div class="penalty">
+        <p>Prototype Penalty Amount</p>
+        <h1>₹{{ "%.2f"|format(challan.penalty) }}</h1>
+    </div>
+
+    <p style="margin-top:20px;color:#94a3b8;font-size:13px;">
+        Academic demonstration only. This is not a legally enforceable government challan.
+    </p>
+
+    <div class="buttons">
+        <button onclick="window.print()">Print Challan</button>
+        <a href="/challans">Back to Challans</a>
+    </div>
+
+</div>
+
+</body>
+</html>

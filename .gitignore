@@ -1,0 +1,16 @@
+venv/
+__pycache__/
+*.pyc
+.env
+.env.*
+!.env.example
+.idea/
+.vscode/
+.pytest_cache/
+*.log
+
+# Temporary uploads
+static/uploads/*
+
+# Keep evidence folder structure
+static/evidence/.gitkeep

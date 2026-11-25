@@ -1,0 +1,267 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Traffic Violations | SmartTraffic AI</title>
+
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+    background: #0b1120;
+    color: #e5e7eb;
+    font-family: Arial, sans-serif;
+    display: flex;
+    min-height: 100vh;
+}
+
+.sidebar {
+    width: 245px;
+    flex-shrink: 0;
+    background: #111827;
+    padding: 28px 20px;
+    border-right: 1px solid #29364b;
+}
+
+.logo {
+    font-size: 22px;
+    font-weight: bold;
+    color: #38bdf8;
+    margin-bottom: 45px;
+}
+
+nav a {
+    display: block;
+    padding: 14px;
+    margin-bottom: 10px;
+    color: #9ca3af;
+    text-decoration: none;
+    border-radius: 9px;
+}
+
+nav a:hover, nav a.active {
+    background: #1e3a5f;
+    color: #38bdf8;
+}
+
+main {
+    flex: 1;
+    padding: 35px;
+    min-width: 0;
+}
+
+.subtitle {
+    color: #9ca3af;
+    margin-top: 9px;
+}
+
+.panel {
+    background: #151f32;
+    border: 1px solid #29364b;
+    border-radius: 13px;
+    padding: 25px;
+    margin-top: 30px;
+}
+
+.panel h2 {
+    font-size: 19px;
+    margin-bottom: 22px;
+}
+
+.form-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 18px;
+}
+
+label {
+    display: block;
+    color: #cbd5e1;
+    margin-bottom: 9px;
+    font-size: 14px;
+}
+
+input, select {
+    width: 100%;
+    padding: 13px;
+    border-radius: 8px;
+    border: 1px solid #334155;
+    background: #0b1120;
+    color: white;
+    outline: none;
+}
+
+input:focus, select:focus {
+    border-color: #38bdf8;
+}
+
+button {
+    margin-top: 22px;
+    padding: 13px 22px;
+    border: none;
+    border-radius: 8px;
+    background: #0284c7;
+    color: white;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+button:hover { background: #0369a1; }
+
+.message {
+    margin-top: 18px;
+    padding: 13px;
+    border-radius: 8px;
+    background: #1e293b;
+}
+
+.success { color: #34d399; }
+.error { color: #fb7185; }
+
+.table-wrap {
+    overflow-x: auto;
+}
+
+table {
+    width: 100%;
+    min-width: 650px;
+    border-collapse: collapse;
+    text-align: left;
+}
+
+th, td {
+    padding: 15px 12px;
+    border-bottom: 1px solid #29364b;
+    font-size: 14px;
+}
+
+th { color: #94a3b8; }
+.status { color: #fbbf24; }
+
+@media(max-width: 750px) {
+    body { display: block; }
+    .sidebar { width: 100%; }
+    main { padding: 20px; }
+    .form-grid { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+
+<body>
+
+<aside class="sidebar">
+    <div class="logo">🚦 SmartTraffic AI</div>
+
+    <nav>
+        <a href="/">▦ Dashboard</a>
+        <a href="/violations" class="active">⚠ Violations</a>
+        <a href="/challans">▤ E-Challans</a>
+        <a href="/ai-detection">🤖 AI Detection</a>
+    </nav>
+</aside>
+
+<main>
+
+    <h1>Traffic Violations</h1>
+    <p class="subtitle">Manage and record detected traffic violations</p>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for category, message in messages %}
+            <div class="message {{ category }}">
+                {{ message }}
+            </div>
+        {% endfor %}
+    {% endwith %}
+
+    <section class="panel">
+        <h2>+ Create Violation Record</h2>
+
+        <form action="/add-violation" method="POST">
+
+            <div class="form-grid">
+
+                <div>
+                    <label>Vehicle Registration Number</label>
+                    <input
+                        type="text"
+                        name="vehicle_number"
+                        placeholder="e.g. MP09AB1234"
+                        required
+                    >
+                </div>
+
+                <div>
+                    <label>Violation Type</label>
+                    <select name="violation_type" required>
+                        <option value="">Select violation</option>
+                        <option value="No Helmet">No Helmet</option>
+                        <option value="Red Light Violation">Red Light Violation</option>
+                        <option value="Triple Riding">Triple Riding</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label>Violation Location</label>
+                    <input
+                        type="text"
+                        name="location"
+                        placeholder="e.g. Vijay Nagar, Indore"
+                        required
+                    >
+                </div>
+
+            </div>
+
+            <button type="submit">
+                Generate Prototype Challan
+            </button>
+
+        </form>
+    </section>
+
+    <section class="panel">
+        <h2>Violation History</h2>
+
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Vehicle Number</th>
+                        <th>Violation</th>
+                        <th>Location</th>
+                        <th>Penalty</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    {% for item in violations %}
+                    <tr>
+                        <td>#{{ item.id }}</td>
+                        <td>{{ item.vehicle_number }}</td>
+                        <td>{{ item.violation_type }}</td>
+                        <td>{{ item.location }}</td>
+                        <td>₹{{ item.penalty }}</td>
+                        <td class="status">{{ item.status }}</td>
+                    </tr>
+
+                    {% else %}
+                    <tr>
+                        <td colspan="6"
+                            style="text-align:center;padding:25px;color:#94a3b8">
+                            No violation records available.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+    </section>
+
+</main>
+</body>
+</html>

@@ -1,0 +1,243 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>E-Challans | SmartTraffic AI</title>
+
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+    background: #0b1120;
+    color: #e5e7eb;
+    font-family: Arial, sans-serif;
+    display: flex;
+    min-height: 100vh;
+}
+
+.sidebar {
+    width: 245px;
+    flex-shrink: 0;
+    background: #111827;
+    padding: 28px 20px;
+    border-right: 1px solid #29364b;
+}
+
+.logo {
+    color: #38bdf8;
+    font-size: 22px;
+    font-weight: bold;
+    margin-bottom: 45px;
+}
+
+nav a {
+    display: block;
+    padding: 14px;
+    margin-bottom: 10px;
+    color: #9ca3af;
+    text-decoration: none;
+    border-radius: 9px;
+}
+
+nav a:hover, nav a.active {
+    background: #1e3a5f;
+    color: #38bdf8;
+}
+
+main {
+    flex: 1;
+    padding: 35px;
+    min-width: 0;
+}
+
+.subtitle {
+    color: #9ca3af;
+    margin-top: 10px;
+}
+
+.stats {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 20px;
+    margin: 30px 0;
+}
+
+.card, .table-box {
+    background: #151f32;
+    border: 1px solid #29364b;
+    border-radius: 13px;
+    padding: 24px;
+}
+
+.card p { color: #9ca3af; }
+
+.card h2 {
+    margin-top: 15px;
+    font-size: 29px;
+}
+
+.blue { color: #38bdf8; }
+.orange { color: #fbbf24; }
+.green { color: #34d399; }
+
+.table-box h2 {
+    font-size: 20px;
+    margin-bottom: 22px;
+}
+
+.table-wrap { overflow-x: auto; }
+
+table {
+    width: 100%;
+    min-width: 850px;
+    border-collapse: collapse;
+    text-align: left;
+}
+
+th, td {
+    padding: 16px 12px;
+    border-bottom: 1px solid #29364b;
+    font-size: 14px;
+}
+
+th { color: #94a3b8; }
+
+.status {
+    color: #fbbf24;
+    font-weight: bold;
+}
+
+.view-btn {
+    color: #38bdf8;
+    text-decoration: none;
+    font-weight: bold;
+}
+
+.view-btn:hover { color: #7dd3fc; }
+
+.empty {
+    text-align: center;
+    color: #94a3b8;
+    padding: 30px;
+}
+
+@media(max-width: 850px) {
+    body { display: block; }
+    .sidebar { width: 100%; }
+    main { padding: 20px; }
+    .stats { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+
+<body>
+
+<aside class="sidebar">
+    <div class="logo">🚦 SmartTraffic AI</div>
+
+    <nav>
+        <a href="/">▦ Dashboard</a>
+        <a href="/violations">⚠ Violations</a>
+        <a href="/challans" class="active">▤ E-Challans</a>
+        <a href="/ai-detection">🤖 AI Detection</a>
+    </nav>
+</aside>
+
+<main>
+
+    <h1>E-Challan Management</h1>
+    <p class="subtitle">Electronic traffic violation records</p>
+
+    <section class="stats">
+
+        <div class="card">
+            <p>Total Challans</p>
+            <h2 class="blue">{{ challans|length }}</h2>
+        </div>
+
+        <div class="card">
+            <p>Pending Challans</p>
+            <h2 class="orange">
+                {{ challans|selectattr('status', 'equalto', 'Pending')|list|length }}
+            </h2>
+        </div>
+
+        <div class="card">
+            <p>Total Penalty</p>
+            <h2 class="green">
+                ₹{{ "%.2f"|format(challans|sum(attribute='penalty')) }}
+            </h2>
+        </div>
+
+    </section>
+
+    <section class="table-box">
+
+        <h2>Generated Challan Records</h2>
+
+        <div class="table-wrap">
+            <table>
+
+                <thead>
+                    <tr>
+                        <th>Challan ID</th>
+                        <th>Vehicle Number</th>
+                        <th>Owner Name</th>
+                        <th>Violation</th>
+                        <th>Date & Time</th>
+                        <th>Penalty</th>
+                        <th>Status</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+
+                    {% for item in challans %}
+
+                    <tr>
+                        <td>#CH-{{ item.id }}</td>
+
+                        <td>{{ item.vehicle_number }}</td>
+
+                        <td>{{ item.owner_name or 'Unknown' }}</td>
+
+                        <td>{{ item.violation_type }}</td>
+
+                        <td>{{ item.violation_time }}</td>
+
+                        <td>₹{{ "%.2f"|format(item.penalty) }}</td>
+
+                        <td class="status">{{ item.status }}</td>
+
+                        <td>
+                            <a
+                                class="view-btn"
+                                href="{{ url_for('challan_detail', challan_id=item.id) }}"
+                            >
+                                View
+                            </a>
+                        </td>
+                    </tr>
+
+                    {% else %}
+
+                    <tr>
+                        <td colspan="8" class="empty">
+                            No challans generated yet.
+                        </td>
+                    </tr>
+
+                    {% endfor %}
+
+                </tbody>
+            </table>
+        </div>
+
+    </section>
+
+</main>
+</body>
+</html>
