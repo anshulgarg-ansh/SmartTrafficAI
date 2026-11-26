@@ -1,12 +1,31 @@
 
+import os
+import gc
 import cv2
 import re
 import uuid
-import easyocr
 import numpy as np
+
+# Keep numerical libraries from creating many CPU threads on small instances.
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+os.environ.setdefault("MKL_NUM_THREADS", "1")
+os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
 
 from pathlib import Path
 from ultralytics import YOLO
+
+try:
+    import torch
+    torch.set_num_threads(1)
+    try:
+        torch.set_num_interop_threads(1)
+    except RuntimeError:
+        pass
+except Exception:
+    torch = None
+
+cv2.setNumThreads(1)
 
 
 # ==========================================
@@ -45,26 +64,56 @@ for model_path in (
 
 
 # ==========================================
-# LOAD AI MODELS
+# MEMORY-AWARE MODEL INITIALIZATION
 # ==========================================
 
-print("Loading Vehicle Detection Model...")
-vehicle_model = YOLO(str(VEHICLE_MODEL_PATH))
+# Models are loaded on first use, not when Flask imports this module.
+# EasyOCR is intentionally loaded only when a valid plate crop is available.
+vehicle_model = None
+helmet_model = None
+plate_model = None
+ocr_reader = None
 
-print("Loading Helmet Detection Model...")
-helmet_model = YOLO(str(HELMET_MODEL_PATH))
 
-print("Loading Number Plate Detection Model...")
-plate_model = YOLO(str(PLATE_MODEL_PATH))
+def get_vehicle_model():
+    global vehicle_model
+    if vehicle_model is None:
+        print("Loading Vehicle Detection Model (CPU)...", flush=True)
+        vehicle_model = YOLO(str(VEHICLE_MODEL_PATH))
+    return vehicle_model
 
-print("Loading EasyOCR...")
 
-ocr_reader = easyocr.Reader(
-    ['en'],
-    gpu=False
-)
+def get_helmet_model():
+    global helmet_model
+    if helmet_model is None:
+        print("Loading Helmet Detection Model (CPU)...", flush=True)
+        helmet_model = YOLO(str(HELMET_MODEL_PATH))
+    return helmet_model
 
-print("ALL AI MODELS LOADED SUCCESSFULLY!")
+
+def get_plate_model():
+    global plate_model
+    if plate_model is None:
+        print("Loading Number Plate Detection Model (CPU)...", flush=True)
+        plate_model = YOLO(str(PLATE_MODEL_PATH))
+    return plate_model
+
+
+def get_ocr_reader():
+    global ocr_reader
+    if ocr_reader is None:
+        print("Loading EasyOCR lazily (CPU)...", flush=True)
+        import easyocr
+        ocr_reader = easyocr.Reader(["en"], gpu=False, verbose=False)
+    return ocr_reader
+
+
+# Conservative limits for the Render Free 512 MB instance.
+INFERENCE_IMAGE_SIZE = 416
+SAMPLE_EVERY_N_FRAMES = 5
+MAX_SAMPLED_FRAMES = 100
+MAX_OCR_CALLS_PER_VIDEO = 12
+MIN_PLATE_CONFIDENCE_FOR_OCR = 0.45
 
 
 # ==========================================
@@ -299,126 +348,79 @@ def normalize_indian_plate(raw_text):
 
 
 def read_number_plate(plate_image):
-    """
-    Read a plate using multiple preprocessing variants.
-    Returns only a format-valid Indian registration number.
-    """
+    """Run one lightweight OCR pass on a cropped plate image."""
     if plate_image is None or plate_image.size == 0:
         return "", 0.0
 
     try:
         gray = cv2.cvtColor(plate_image, cv2.COLOR_BGR2GRAY)
-
-        # Upscale small plate crops to give OCR more character detail.
         height, width = gray.shape[:2]
-        if width < 600:
-            scale = 600 / max(width, 1)
+
+        # Avoid very large OCR tensors while keeping enough detail for plates.
+        if width > 420:
+            scale = 420 / max(width, 1)
             gray = cv2.resize(
-                gray,
-                None,
-                fx=scale,
-                fy=scale,
+                gray, None, fx=scale, fy=scale,
+                interpolation=cv2.INTER_AREA
+            )
+        elif width < 240:
+            scale = 240 / max(width, 1)
+            gray = cv2.resize(
+                gray, None, fx=scale, fy=scale,
                 interpolation=cv2.INTER_CUBIC
             )
 
-        # Improve local contrast and reduce noise.
-        clahe = cv2.createCLAHE(
-            clipLimit=2.0,
-            tileGridSize=(8, 8)
-        ).apply(gray)
-
-        denoised = cv2.bilateralFilter(clahe, 9, 75, 75)
-
-        sharpen_kernel = np.array(
-            [
-                [-1, -1, -1],
-                [-1,  9, -1],
-                [-1, -1, -1]
-            ],
-            dtype=np.float32
-        )
-        sharpened = cv2.filter2D(denoised, -1, sharpen_kernel)
-
-        _, otsu = cv2.threshold(
-            sharpened, 0, 255,
-            cv2.THRESH_BINARY + cv2.THRESH_OTSU
+        processed = cv2.bilateralFilter(gray, 5, 35, 35)
+        reader = get_ocr_reader()
+        results = reader.readtext(
+            processed,
+            detail=1,
+            paragraph=False,
+            allowlist=OCR_ALLOWLIST,
+            decoder="greedy",
+            batch_size=1,
+            workers=0
         )
 
-        adaptive = cv2.adaptiveThreshold(
-            sharpened,
-            255,
-            cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-            cv2.THRESH_BINARY,
-            31,
-            11
-        )
-
-        variants = [denoised, sharpened, otsu, adaptive]
-        valid_candidates = []
-
-        for processed in variants:
-            results = ocr_reader.readtext(
-                processed,
-                detail=1,
-                paragraph=False,
-                allowlist=OCR_ALLOWLIST,
-                decoder="greedy"
-            )
-
-            if not results:
-                continue
-
-            # Try each OCR segment separately.
-            for detection in results:
-                raw = detection[1]
-                confidence = float(detection[2])
-                plate_text = normalize_indian_plate(raw)
-
-                if plate_text and confidence >= 0.20:
-                    valid_candidates.append((plate_text, confidence))
-
-            # Also try joining text segments in reading order. Some plate
-            # crops are returned as multiple OCR boxes.
-            ordered = sorted(
-                results,
-                key=lambda item: (
-                    (item[0][0][1] + item[0][1][1]) / 2,
-                    item[0][0][0]
-                )
-            )
-            joined_text = "".join(item[1] for item in ordered)
-            joined_confidence = sum(
-                float(item[2]) for item in ordered
-            ) / max(len(ordered), 1)
-
-            joined_plate = normalize_indian_plate(joined_text)
-            if joined_plate and joined_confidence >= 0.20:
-                valid_candidates.append(
-                    (joined_plate, joined_confidence)
-                )
-
-        if not valid_candidates:
+        if not results:
             return "", 0.0
 
-        # Prefer the strongest OCR result; repeated agreement is a useful
-        # tie-breaker when multiple preprocessing variants produce a result.
+        candidates = []
+        ordered = sorted(
+            results,
+            key=lambda item: (
+                (item[0][0][1] + item[0][1][1]) / 2,
+                item[0][0][0]
+            )
+        )
+
+        for detection in ordered:
+            plate_text = normalize_indian_plate(detection[1])
+            confidence = float(detection[2])
+            if plate_text and confidence >= 0.20:
+                candidates.append((plate_text, confidence))
+
+        joined_text = "".join(item[1] for item in ordered)
+        joined_confidence = sum(float(item[2]) for item in ordered) / max(len(ordered), 1)
+        joined_plate = normalize_indian_plate(joined_text)
+        if joined_plate and joined_confidence >= 0.20:
+            candidates.append((joined_plate, joined_confidence))
+
+        if not candidates:
+            return "", 0.0
+
         scores = {}
-        for plate_text, confidence in valid_candidates:
+        for plate_text, confidence in candidates:
             scores.setdefault(plate_text, []).append(confidence)
 
         best_text = max(
             scores,
-            key=lambda plate: (
-                sum(scores[plate]) / len(scores[plate])
-                + 0.03 * (len(scores[plate]) - 1)
-            )
+            key=lambda plate: sum(scores[plate]) / len(scores[plate])
         )
-        best_confidence = sum(scores[best_text]) / len(scores[best_text])
-
-        return best_text, best_confidence
+        return best_text, sum(scores[best_text]) / len(scores[best_text])
 
     except Exception as e:
-        print("OCR Error:", e)
+        print("OCR Error:", e, flush=True)
         return "", 0.0
 
 
@@ -427,6 +429,8 @@ def read_number_plate(plate_image):
 # ==========================================
 
 def process_video(video_path):
+
+    global vehicle_model, helmet_model, plate_model, ocr_reader
 
     cap = cv2.VideoCapture(str(video_path))
 
@@ -453,6 +457,7 @@ def process_video(video_path):
     frame_number = 0
 
     plate_detections = 0
+    ocr_calls = 0
 
     evidence_images = []
     no_helmet_evidence = []
@@ -463,6 +468,7 @@ def process_video(video_path):
     # at most one vote per frame, preventing duplicate boxes in one frame
     # from artificially increasing its vote count.
     plate_votes = {}
+    pending_ocr = []
     recognized_plates = []
 
     no_helmet_events = []
@@ -481,9 +487,12 @@ def process_video(video_path):
 
             frame_number += 1
 
-            # Process every fifth frame
-            if frame_number % 5 != 0:
+            # Sample frames and cap total work to protect the small free instance.
+            if frame_number % SAMPLE_EVERY_N_FRAMES != 0:
                 continue
+
+            if frames_processed >= MAX_SAMPLED_FRAMES:
+                break
 
             frames_processed += 1
 
@@ -493,10 +502,12 @@ def process_video(video_path):
             # VEHICLE DETECTION
             # ==================================
 
-            vehicle_results = vehicle_model.predict(
+            vehicle_results = get_vehicle_model().predict(
                 frame,
                 conf=0.35,
-                imgsz=640,
+                imgsz=INFERENCE_IMAGE_SIZE,
+                device="cpu",
+                max_det=60,
                 verbose=False
             )
 
@@ -513,15 +524,18 @@ def process_video(video_path):
                     vehicle_counts[class_name] += 1
 
             annotated_frame = vehicle_result.plot()
+            del vehicle_results, vehicle_result
 
             # ==================================
             # HELMET DETECTION
             # ==================================
 
-            helmet_results = helmet_model.predict(
+            helmet_results = get_helmet_model().predict(
                 frame,
                 conf=0.35,
-                imgsz=640,
+                imgsz=INFERENCE_IMAGE_SIZE,
+                device="cpu",
+                max_det=40,
                 verbose=False
             )
 
@@ -589,14 +603,18 @@ def process_video(video_path):
                     2
                 )
 
+            del helmet_results, helmet_result
+
             # ==================================
             # NUMBER PLATE DETECTION
             # ==================================
 
-            plate_results = plate_model.predict(
+            plate_results = get_plate_model().predict(
                 frame,
                 conf=0.35,
-                imgsz=640,
+                imgsz=INFERENCE_IMAGE_SIZE,
+                device="cpu",
+                max_det=30,
                 verbose=False
             )
 
@@ -633,13 +651,21 @@ def process_video(video_path):
                     x1:x2
                 ]
 
-                # Extract and validate the registration number.
-                plate_text, ocr_confidence = read_number_plate(plate_crop)
+                # Queue a small number of strong plate crops. OCR is deferred
+                # until YOLO inference is complete so OCR weights do not overlap
+                # with all three detector models in RAM.
+                if (
+                    plate_confidence >= MIN_PLATE_CONFIDENCE_FOR_OCR
+                    and len(pending_ocr) < MAX_OCR_CALLS_PER_VIDEO
+                ):
+                    pending_ocr.append({
+                        "crop": plate_crop.copy(),
+                        "plate_confidence": plate_confidence,
+                        "frame_number": frame_number
+                    })
 
                 plate_detections += 1
-
-                # Never display arbitrary OCR text as a registration number.
-                label = plate_text if plate_text else "Unverified Plate"
+                label = "Plate Candidate"
 
                 cv2.rectangle(
                     annotated_frame,
@@ -659,46 +685,7 @@ def process_video(video_path):
                     2
                 )
 
-                # Keep only format-valid OCR results as review candidates.
-                if plate_text:
-                    plate_record = {
-                        "vehicle_number": plate_text,
-                        "plate_confidence": plate_confidence,
-                        "ocr_confidence": ocr_confidence,
-                        "frame_number": frame_number
-                    }
-
-                    frame_plate_candidates.append(plate_record)
-
-                    # Save only validated plate crops; this prevents words
-                    # such as CAMERA or GOODS CARRIER appearing as plate evidence.
-                    if (
-                        plate_text not in plate_evidence_seen
-                        and len(plate_evidence) < 12
-                    ):
-                        filename = (
-                            f"plate_{run_id}_"
-                            f"{len(plate_evidence) + 1}.jpg"
-                        )
-                        save_path = EVIDENCE_DIR / filename
-
-                        if cv2.imwrite(str(save_path), plate_crop):
-                            plate_evidence_seen.add(plate_text)
-                            plate_evidence.append({
-                                "image": f"evidence/{filename}",
-                                "vehicle_number": plate_text,
-                                "plate_confidence": plate_confidence,
-                                "ocr_confidence": ocr_confidence
-                            })
-
-                    # Multi-frame voting: one vote per distinct plate per frame.
-                    if plate_text not in voted_this_frame:
-                        voted_this_frame.add(plate_text)
-                        plate_votes.setdefault(plate_text, []).append({
-                            "frame_number": frame_number,
-                            "plate_confidence": plate_confidence,
-                            "ocr_confidence": ocr_confidence
-                        })
+            del plate_results, plate_result
 
             # ==================================
             # SAVE GENERAL EVIDENCE
@@ -776,9 +763,15 @@ def process_video(video_path):
 
                     })
 
+            # Release large per-frame arrays before reading the next frame.
+            del frame, annotated_frame
+            if frames_processed % 10 == 0:
+                gc.collect()
+
     finally:
 
         cap.release()
+        gc.collect()
 
     # ==========================================
     # VALIDATE VIDEO
@@ -789,6 +782,74 @@ def process_video(video_path):
         raise ValueError(
             "Video is empty or too short to process."
         )
+
+    # ==========================================
+    # RELEASE DETECTORS BEFORE LOADING OCR
+    # ==========================================
+
+    # Free YOLO model weights before EasyOCR initializes its own Torch models.
+    # This reduces peak memory on Render's 512 MB free instance.
+    vehicle_model = None
+    helmet_model = None
+    plate_model = None
+    gc.collect()
+
+    # Run OCR only after detector memory has been released.
+    ocr_calls = 0
+    events_by_frame = {event["frame_number"]: event for event in no_helmet_events}
+
+    for pending in pending_ocr:
+        crop = pending["crop"]
+        try:
+            ocr_calls += 1
+            plate_text, ocr_confidence = read_number_plate(crop)
+            if not plate_text:
+                continue
+
+            frame_no = pending["frame_number"]
+            plate_confidence = pending["plate_confidence"]
+            plate_record = {
+                "vehicle_number": plate_text,
+                "plate_confidence": plate_confidence,
+                "ocr_confidence": ocr_confidence,
+                "frame_number": frame_no
+            }
+
+            # One vote per exact plate string per sampled frame.
+            frame_votes = plate_votes.setdefault(plate_text, [])
+            if not any(item["frame_number"] == frame_no for item in frame_votes):
+                frame_votes.append({
+                    "frame_number": frame_no,
+                    "plate_confidence": plate_confidence,
+                    "ocr_confidence": ocr_confidence
+                })
+
+            # Attach only as a same-frame review candidate, not a confirmed match.
+            event = events_by_frame.get(frame_no)
+            if event is not None:
+                event["plate_candidates"].append(plate_record)
+
+            # Save at most 12 validated plate crops for the evidence gallery.
+            if plate_text not in plate_evidence_seen and len(plate_evidence) < 12:
+                filename = f"plate_{run_id}_{len(plate_evidence) + 1}.jpg"
+                save_path = EVIDENCE_DIR / filename
+                if cv2.imwrite(str(save_path), crop):
+                    plate_evidence_seen.add(plate_text)
+                    plate_evidence.append({
+                        "image": f"evidence/{filename}",
+                        "vehicle_number": plate_text,
+                        "plate_confidence": plate_confidence,
+                        "ocr_confidence": ocr_confidence
+                    })
+        finally:
+            del crop
+
+    pending_ocr.clear()
+
+    # Release OCR weights after this video so the web worker can return to a
+    # lower idle-memory state between uploads.
+    ocr_reader = None
+    gc.collect()
 
     # ==========================================
     # FINAL OCR CONSENSUS + DUPLICATE REDUCTION
@@ -856,6 +917,8 @@ def process_video(video_path):
         "counts": vehicle_counts,
 
         "frames_processed": frames_processed,
+
+        "ocr_calls": ocr_calls,
 
         "total_detections": total_vehicle_detections,
 
